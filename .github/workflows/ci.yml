@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: queueflow
+          POSTGRES_PASSWORD: queueflow_ci
+          POSTGRES_DB: QueueFlow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queueflow -d QueueFlow_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://queueflow:queueflow_ci@localhost:5432/QueueFlow_test?schema=public
+      DATABASE_URL_TEST: postgresql://queueflow:queueflow_ci@localhost:5432/QueueFlow_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      REDIS_URL_TEST: redis://localhost:6379/15
+      JWT_ACCESS_SECRET: ci-access-secret-change-me-32
+      JWT_REFRESH_SECRET: ci-refresh-secret-change-me-32
+      CORS_ORIGIN: http://localhost:3001
+      SWAGGER_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test -- --runInBand
+      - run: npm run test:e2e
+      - run: npm run test:e2e:cross
+      - run: npm run build

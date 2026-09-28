@@ -1,0 +1,21 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testRegex": "test/e2e/cross-instance\\.e2e-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": {
+          "esModuleInterop": true,
+          "allowSyntheticDefaultImports": true
+        }
+      }
+    ]
+  },
+  "transformIgnorePatterns": ["node_modules/(?!(@nestjs|jsonwebtoken)/)"],
+  "testEnvironment": "node",
+  "maxWorkers": 1,
+  "testTimeout": 45000,
+  "setupFiles": ["<rootDir>/test/e2e/setup-cross.ts"]
+}

@@ -1,0 +1,2 @@
+export type AppointmentConflictCode =
+  'APPOINTMENT_TIME_CONFLICT' | 'APPOINTMENT_CUSTOMER_TIME_CONFLICT';

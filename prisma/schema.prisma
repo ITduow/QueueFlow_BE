@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  STAFF
+  MANAGER
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum BusinessStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+
+  @@map("business_status")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+
+  @@map("appointment_status")
+}
+
+enum QueueEntryStatus {
+  WAITING
+  CALLED
+  SERVING
+  COMPLETED
+  SKIPPED
+  CANCELLED
+
+  @@map("queue_entry_status")
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  QUEUE_JOINED
+  QUEUE_CALLED
+  QUEUE_UPDATED
+  GENERAL
+
+  @@map("notification_type")
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique @db.VarChar(255)
+  passwordHash  String?  @map("password_hash") @db.VarChar(255)
+  fullName      String   @map("full_name") @db.VarChar(150)
+  phone         String?  @db.VarChar(30)
+  avatarUrl     String?  @map("avatar_url")
+  role          UserRole @default(CUSTOMER)
+  isActive      Boolean  @default(true) @map("is_active")
+  emailVerified Boolean  @default(false) @map("email_verified")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  ownedBusinesses Business[]       @relation("BusinessOwner")
+  memberships     BusinessMember[]
+  appointments    Appointment[]    @relation("AppointmentCustomer")
+  queueEntries    QueueEntry[]
+  notifications   Notification[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]       @relation("AuditUser")
+
+  @@index([role])
+  @@map("users")
+}
+
+model Business {
+  id          String         @id @default(uuid()) @db.Uuid
+  ownerId     String         @map("owner_id") @db.Uuid
+  name        String         @db.VarChar(200)
+  slug        String         @unique @db.VarChar(200)
+  description String?
+  phone       String?        @db.VarChar(30)
+  email       String?        @db.VarChar(255)
+  address     String?
+  city        String?        @db.VarChar(100)
+  latitude    Decimal?       @db.Decimal(10, 7)
+  longitude   Decimal?       @db.Decimal(10, 7)
+  logoUrl     String?        @map("logo_url")
+  coverUrl    String?        @map("cover_url")
+  timezone    String         @default("Asia/Ho_Chi_Minh") @db.VarChar(64)
+  status      BusinessStatus @default(PENDING)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner        User                  @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members      BusinessMember[]
+  services     Service[]
+  openingHours BusinessOpeningHour[]
+  appointments Appointment[]
+  queues       Queue[]
+  auditLogs    AuditLog[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([city])
+  @@map("businesses")
+}
+
+model BusinessMember {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @map("business_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  role       UserRole
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId], name: "uq_business_member")
+  @@index([userId])
+  @@map("business_members")
+}
+
+model Service {
+  id              String   @id @default(uuid()) @db.Uuid
+  businessId      String   @map("business_id") @db.Uuid
+  name            String   @db.VarChar(150)
+  description     String?
+  durationMinutes Int      @map("duration_minutes")
+  price           Decimal  @default(0) @db.Decimal(12, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  queueEntries QueueEntry[]
+
+  @@index([businessId])
+  @@map("services")
+}
+
+model BusinessOpeningHour {
+  id         String    @id @default(uuid()) @db.Uuid
+  businessId String    @map("business_id") @db.Uuid
+  dayOfWeek  Int       @map("day_of_week") @db.SmallInt
+  openTime   DateTime? @map("open_time") @db.Time(0)
+  closeTime  DateTime? @map("close_time") @db.Time(0)
+  isClosed   Boolean   @default(false) @map("is_closed")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, dayOfWeek], name: "uq_business_day")
+  @@map("business_opening_hours")
+}
+
+model Appointment {
+  id                 String            @id @default(uuid()) @db.Uuid
+  customerId         String            @map("customer_id") @db.Uuid
+  businessId         String            @map("business_id") @db.Uuid
+  serviceId          String            @map("service_id") @db.Uuid
+  startTime          DateTime          @map("start_time") @db.Timestamptz(6)
+  endTime            DateTime          @map("end_time") @db.Timestamptz(6)
+  status             AppointmentStatus @default(PENDING)
+  customerNote       String?           @map("customer_note")
+  cancellationReason String?           @map("cancellation_reason")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer User     @relation("AppointmentCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([customerId])
+  @@index([businessId])
+  @@index([serviceId])
+  @@index([startTime])
+  @@index([status])
+  @@map("appointments")
+}
+
+model Queue {
+  id              String   @id @default(uuid()) @db.Uuid
+  businessId      String   @map("business_id") @db.Uuid
+  queueDate       DateTime @default(now()) @map("queue_date") @db.Date
+  name            String   @default("Main Queue") @db.VarChar(150)
+  isActive        Boolean  @default(true) @map("is_active")
+  lastQueueNumber Int      @default(0) @map("last_queue_number")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  business Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  entries  QueueEntry[]
+
+  @@unique([businessId, queueDate, name], name: "uq_business_queue_date")
+  @@index([businessId, queueDate])
+  @@map("queues")
+}
+
+model QueueEntry {
+  id                   String           @id @default(uuid()) @db.Uuid
+  queueId              String           @map("queue_id") @db.Uuid
+  customerId           String           @map("customer_id") @db.Uuid
+  serviceId            String           @map("service_id") @db.Uuid
+  queueNumber          Int              @map("queue_number")
+  status               QueueEntryStatus @default(WAITING)
+  joinedAt             DateTime         @default(now()) @map("joined_at") @db.Timestamptz(6)
+  calledAt             DateTime?        @map("called_at") @db.Timestamptz(6)
+  servingAt            DateTime?        @map("serving_at") @db.Timestamptz(6)
+  completedAt          DateTime?        @map("completed_at") @db.Timestamptz(6)
+  estimatedWaitMinutes Int?             @map("estimated_wait_minutes")
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  queue    Queue   @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  customer User    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  service  Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([queueId, queueNumber], name: "uq_queue_number")
+  @@index([queueId, status])
+  @@index([customerId])
+  @@index([serviceId])
+  @@map("queue_entries")
+}
+
+model Notification {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  sourceEventId String?          @unique @map("source_event_id") @db.Uuid
+  type          NotificationType @default(GENERAL)
+  title         String           @db.VarChar(200)
+  message       String
+  data          Json?
+  isRead        Boolean          @default(false) @map("is_read")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt        DateTime?        @map("read_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address") @db.Inet
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  businessId String?  @map("business_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String?  @map("entity_type") @db.VarChar(100)
+  entityId   String?  @map("entity_id") @db.Uuid
+  oldData    Json?    @map("old_data")
+  newData    Json?    @map("new_data")
+  ipAddress  String?  @map("ip_address") @db.Inet
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User?     @relation("AuditUser", fields: [userId], references: [id], onDelete: SetNull)
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([businessId])
+  @@index([action])
+  @@map("audit_logs")
+}
